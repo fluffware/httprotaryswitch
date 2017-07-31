@@ -1,0 +1,7 @@
+[package]
+name = "httprotartyswitch"
+version = "0.1.0"
+authors = ["ksb <ksb@users.sourceforge.net>"]
+
+[dependencies]
+libusb = "0.3"
