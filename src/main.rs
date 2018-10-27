@@ -16,7 +16,7 @@ fn main() {
 			device = Some(d);
 		    }
 		    
-		    Err(e) => panic!("Failed to open HID device")
+		    Err(e) => panic!("Failed to open HID device: {}",e)
 		}
 		break
 	    },
@@ -33,8 +33,9 @@ fn main() {
         println!("Read: {:?}", &buf[..res]);
         if buf[0] == 3 && buf[1] == 2 && buf[4] == 4 {
             buf[0] = 4;
-            buf[2] = 0x01;
+            buf[2] = 0x03;
             buf[4] = 0;
+            buf[8] = buf[8] + 1;
             //device.send_feature_report(&buf[..3+4*8-1]).unwrap();
             {
                 let l= 3+4*8; 
