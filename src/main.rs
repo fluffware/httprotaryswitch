@@ -1,81 +1,50 @@
-extern crate libusb;
-use std::io::Write;
-use std::error::Error;
-use std::time::Duration;
-
-use libusb::Context;
+extern crate hidapi;
 
 fn main() {
-    let usbctxt = Context::new().unwrap();
-    if !usbctxt.has_hid_access() {
-        writeln!(std::io::stderr(), "Can't access HID devices").unwrap();
-        return;
+    let api = hidapi::HidApi::new().unwrap();
+    // Print out information about all connected devices
+    let mut device: Option<hidapi::HidDevice> = None;
+    for info in api.devices() {
+        println!("{:#?}", info);
+       
+        match  info {
+    	    &hidapi::HidDeviceInfo{product_id:0x0060, vendor_id: 0x1658, 
+	  		           interface_number: 1, ..} => {
+                println!("Device: {:04x}:{:04x} Interface: {} Usage: {}/{}", info.vendor_id, info.product_id, info.interface_number, info.usage_page, info.usage);         
+		match info.open_device(&api) {
+		    Ok(d) => {
+			device = Some(d);
+		    }
+		    
+		    Err(e) => panic!("Failed to open HID device")
+		}
+		break
+	    },
+	    _ => {}
+        }	  	   
     }
-    let devices = 
-        match usbctxt.devices() {
-            Ok(d) => d,
-            Err(e) => {
-                 writeln!(std::io::stderr(), "Failed to list USB devices: {}", e.description()).unwrap();
-                return
-            },
-        };
-    let mut device = None;
-    for d in devices.iter() {
-        if let Ok(desc) = d.device_descriptor() {
-            println!("{:04x}:{:04x}",desc.vendor_id(), desc.product_id());
-            match (desc.vendor_id(), desc.product_id()) {
-                (0x2222, 0x3060) => {
-                    if device.is_some() {
-                        writeln!(std::io::stderr(), 
-                                 "More than one usable devices found").unwrap();
-                        return
-                    }
-                    device = Some(d);
-                },
-                _ => {} 
-            }
-        }
-    }
-    let mut handle = 
-        match device {
-            Some(dev) => 
-                match dev.open() {
-                    Ok(h) => h,
-                    Err(e) => {
-                        writeln!(std::io::stderr(), 
-                                 "Failed to open USB device: {}", 
-                                 e.description()).unwrap();
-                        return
-                    }
-                },
-            None => {
-                writeln!(std::io::stderr(), 
-                         "No usable device found").unwrap();
-                return
-            }
-        };
-    match handle.detach_kernel_driver(0) {
-        _ => {}
-    }
-    if let Err(e) = handle.claim_interface(0) {
-        writeln!(std::io::stderr(), 
-                 "Failed to claim interface: {}", 
-                 e.description()).unwrap();
-        return
-    }
+    let device = device.expect("No encoder found");
+        
+   
+    // Read data from device
+    let mut buf = [0u8; 64];
     loop {
-        let mut buf = [0; 4];
-        match handle.read_interrupt(0x81, &mut buf,Duration::new(0,0)) {
-            Ok(n) => {
-                println!("Got {} bytes",n);
-                println!("{:?}",&buf[0..n]);
-            },
-            Err(e) => {
-                writeln!(std::io::stderr(), 
-                         "Reading from USB device failed: {}", 
-                         e.description()).unwrap();   
+        let res = device.read(&mut buf[..]).unwrap();
+        println!("Read: {:?}", &buf[..res]);
+        if buf[0] == 3 && buf[1] == 2 && buf[4] == 4 {
+            buf[0] = 4;
+            buf[2] = 0x01;
+            buf[4] = 0;
+            //device.send_feature_report(&buf[..3+4*8-1]).unwrap();
+            {
+                let l= 3+4*8; 
+                match device.write(&buf[..l]) {
+                    Ok(s) => println!("Sent {} bytes", s),
+                    Err(e) => println!("Failed to send {} bytes: {}", l, e)
+                }
             }
         }
-                
     }
+    
+    
 }
